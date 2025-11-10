@@ -1,0 +1,661 @@
+name: Build and Verify Workflow
+
+on:
+  workflow_call:
+    secrets:
+      QLTY_COVERAGE_TOKEN:
+        required: false
+        description: This secret is needed for Qlty coverage upload if enabled.
+      PR_TOKEN:
+        required: false
+        description: 'Personal Access Token with repo permissions to create PRs.'
+    inputs:
+      node-version-file:
+        description: 'package.json file'
+        required: false
+        type: string
+        default: './package.json'
+      package-manager:
+        description: 'Package manager to use (npm or yarn)'
+        required: false
+        type: string
+        default: 'npm'
+      working-directory:
+        description: 'Working directory for the build'
+        required: false
+        type: string
+        default: '.'
+      platform-matrix-file:
+        description: 'Path to JSON file containing platform matrix: [{ "platform": "...", "arch": "..." }]'
+        required: true
+        type: string
+      enable-qlty:
+        type: boolean
+        required: false
+        default: false
+        description: If true, coverage reports are uploaded to Qlty. Requires QLTY_COVERAGE_TOKEN secret.
+      # download-script-name:
+      #   type: string
+      #   required: false
+      #   description: Path to an executable script. If provided, this is run once per platform before packaging. The platform is passed as an argument.
+# specific command inputs
+      build-command:
+        description: 'Build command to run'
+        required: false
+        type: string
+        default: 'build'
+      test-command:
+        description: 'Test command to run'
+        required: false
+        type: string
+        default: 'test'
+      lint-command:
+        description: 'Lint command to run'
+        required: false
+        type: string
+        default: 'lint'
+
+        # outputs:
+    #   build-success:
+    #     description: 'Whether the build was successful'
+    #     value: ${{ jobs.build.outputs.build-success }}
+    #   platform-matrix-used:
+    #     description: 'The platform matrix configuration used'
+    #     value: ${{ jobs.configure-ci.outputs.platform-matrix }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CALLER_DIR: 'caller-repository'
+  WORKFLOW_DIR: 'vscode-extension-workflows'
+
+jobs:
+  configure-ci:
+    runs-on: ubuntu-latest
+    outputs:
+      working-dir: ${{ steps.get-working-dir.outputs.dir }}
+      has-e2e-tests: ${{ steps.check-e2e-test-command.outputs.has-e2e-script }}
+      platform-matrix: ${{ steps.load-platform-matrix.outputs.matrix }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          repository: ${{ github.event.repository.full_name }}
+          path: ${{ env.CALLER_DIR }}
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          repository: Open-CMSIS-Pack/vscode-extension-workflows
+          path: ${{ env.WORKFLOW_DIR }}
+
+      - name: Load platform matrix
+        id: load-platform-matrix
+        run: |
+          # Check directory structure
+          echo "📋 Caller directory contents:"
+          ls -la "${{ env.CALLER_DIR }}" || echo "❌ Failed to list caller directory"
+
+          if [ -d "${{ env.CALLER_DIR }}/.github" ]; then
+            echo "📋 .github directory contents:"
+            ls -la "${{ env.CALLER_DIR }}/.github" || echo "❌ Failed to list .github directory"
+          fi
+
+          # Load platform matrix from caller repository
+          MATRIX_FILE_PATH="${{ env.CALLER_DIR }}/${{ inputs.platform-matrix-file }}"
+          if [ -f "${MATRIX_FILE_PATH}" ]; then
+            echo "📁 Loading platform matrix from: ${{ inputs.platform-matrix-file }}"
+            echo "📋 File contents:"
+            cat "${MATRIX_FILE_PATH}"
+
+            # Validate JSON syntax
+            if ! jq empty "${MATRIX_FILE_PATH}" 2>/dev/null; then
+              echo "❌ Invalid JSON in platform matrix file"
+              echo "🔍 JSON validation error:"
+              jq . "${MATRIX_FILE_PATH}" 2>&1 || true
+              exit 1
+            fi
+
+            matrix=$(cat "${MATRIX_FILE_PATH}" | jq -c .)
+            echo "🔧 Platform matrix (compact): $matrix"
+
+            # Validate matrix structure
+            if [ "$matrix" = "null" ] || [ "$matrix" = "[]" ] || [ -z "$matrix" ]; then
+              echo "❌ Platform matrix is empty or invalid"
+              exit 1
+            fi
+
+            echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+            echo "✅ Platform matrix loaded successfully"
+          else
+            echo "❌ Platform matrix file not found: ${{ inputs.platform-matrix-file }}"
+            echo "💡 Please ensure the file exists in your repository at the specified path."
+            echo "🔍 Searched at: ${MATRIX_FILE_PATH}"
+            exit 1
+          fi
+
+      - name: Get working directory
+        id: get-working-dir
+        run: |
+          if [ -z "${{ inputs.working-directory }}" ]; then
+            echo "dir=./" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=${{ inputs.working-directory }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check for E2E Test Script
+        working-directory: ${{ env.CALLER_DIR }}
+        id: check-e2e-test-command
+        run: |
+          if grep -qE '"test:e2e"\s*:' package.json; then
+            echo "✅ E2E test script found in package.json"
+            echo "has-e2e-script=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "❌ No E2E test script found in package.json"
+            echo "has-e2e-script=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: [ configure-ci ]
+    name: 'Build (${{ matrix.platform }}, ${{ matrix.arch }})'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.configure-ci.outputs.platform-matrix) }}
+    runs-on: ${{ matrix.platform }}
+    # outputs:
+    #   build-success: ${{ steps.build.outcome == 'success' }}
+
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
+      - run: |
+          echo "🔧 Configuring git settings"
+          git config --global core.autocrlf false
+          echo "✅ Git autocrlf set to false"
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          submodules: true
+          fetch-depth: 0  # Fetch full history for git describe to work
+
+      - name: Setup Node
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: ${{ inputs.node-version-file }}
+          registry-url: https://npm.pkg.github.com
+          package-manager-cache: false
+          always-auth: true
+
+      # calculate version and set in package.json
+      # update version of package.json npm version --no-git-tag-version v1.23.0
+      # update version in changelog
+      - name: Set version in changelog and package.json
+        if: |
+          (matrix.arch == 'amd64') &&
+          (startsWith(matrix.platform, 'ubuntu'))
+        run: |
+          case ${{ github.event_name }} in
+            release)
+              echo "🚀 Processing release event"
+              TAG="${{ github.event.release.tag_name }}"
+              # Package manager specific version setting
+              if [ "${{ inputs.package-manager }}" = "npm" ]; then
+                npm version --no-git-tag-version "${TAG#v}"
+              else
+                yarn version --no-git-tag-version --new-version "${TAG#v}"
+              fi
+              ;;
+            pull_request)
+              echo "🔀 Processing pull request event"
+              RAW_DESCRIBE=$(git describe --tags --always --long)
+              DESCRIBE=$(git describe --tags | grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+' || echo "")
+              QUALIFIER=$(git describe --tags | grep -Eo '\-g[0-9a-f]+$' || echo "")
+
+              # Get current version from package.json
+              CURRENT_VERSION=$(jq -r ".version" < package.json)
+              if [ -n "${DESCRIBE}" ]; then
+                TARGET_VERSION="${DESCRIBE#v}"
+                # Only update version if different from current
+                if [ "$CURRENT_VERSION" != "$TARGET_VERSION" ]; then
+                  echo "🔧 Setting base version to ${TARGET_VERSION}"
+                  if [ "${{ inputs.package-manager }}" = "npm" ]; then
+                    npm version --no-git-tag-version "${TARGET_VERSION}"
+                  else
+                    yarn version --no-git-tag-version --new-version "${TARGET_VERSION}"
+                  fi
+                else
+                  echo "ℹ️  Version already at ${TARGET_VERSION}, skipping base version update"
+                fi
+                echo "🔧 Adding prerelease identifier"
+                NEW_PRERELEASE_VERSION="${TARGET_VERSION}-pr${{ github.event.number }}${QUALIFIER}.0"
+                if [ "${{ inputs.package-manager }}" = "npm" ]; then
+                  npm version --no-git-tag-version "${NEW_PRERELEASE_VERSION}"
+                else
+                  yarn version --no-git-tag-version --new-version "${NEW_PRERELEASE_VERSION}"
+                fi
+              else
+                NEW_PRERELEASE_VERSION="${CURRENT_VERSION}-pr${{ github.event.number }}-g$(git rev-parse --short HEAD).0"
+                if [ "${{ inputs.package-manager }}" = "npm" ]; then
+                  npm version --no-git-tag-version "${NEW_PRERELEASE_VERSION}"
+                else
+                  yarn version --no-git-tag-version --new-version "${NEW_PRERELEASE_VERSION}"
+                fi
+              fi
+              ;;
+            *)
+              echo "🔄 Processing other event (push/workflow_dispatch)"
+              RAW_DESCRIBE=$(git describe --tags --always --long)
+              DESCRIBE=$(git describe --tags | grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+' || echo "")
+              QUALIFIER=$(git describe --tags | grep -Eo '[0-9]+\-g[0-9a-f]+$' || echo "")
+
+              # Get current version from package.json
+              CURRENT_VERSION=$(jq -r ".version" < package.json)
+              if [ -n "${DESCRIBE}" ]; then
+                TARGET_VERSION="${DESCRIBE#v}"
+                # Only update version if different from current
+                if [ "$CURRENT_VERSION" != "$TARGET_VERSION" ]; then
+                  echo "🔧 Setting base version to ${TARGET_VERSION}"
+                  if [ "${{ inputs.package-manager }}" = "npm" ]; then
+                    npm version --no-git-tag-version "${TARGET_VERSION}"
+                  else
+                    yarn version --no-git-tag-version --new-version "${TARGET_VERSION}"
+                  fi
+                else
+                  echo "ℹ️  Version already at ${TARGET_VERSION}, skipping base version update"
+                fi
+
+                echo "🔧 Adding prerelease identifier"
+                NEW_PRERELEASE_VERSION="${TARGET_VERSION}-${{ github.ref_name }}${QUALIFIER}.0"
+                if [ "${{ inputs.package-manager }}" = "npm" ]; then
+                  npm version --no-git-tag-version "${NEW_PRERELEASE_VERSION}"
+                else
+                  yarn version --no-git-tag-version --new-version "${NEW_PRERELEASE_VERSION}"
+                fi
+              else
+                NEW_PRERELEASE_VERSION="${CURRENT_VERSION}-${{ github.ref_name }}-g$(git rev-parse --short HEAD).0"
+                if [ "${{ inputs.package-manager }}" = "npm" ]; then
+                  npm version --no-git-tag-version "${NEW_PRERELEASE_VERSION}"
+                else
+                  yarn version --no-git-tag-version --new-version "${NEW_PRERELEASE_VERSION}"
+                fi
+              fi
+              ;;
+          esac
+
+          echo "📦 Final package.json version:"
+          VERSION="$(jq -r ".version" < package.json)"
+          echo "Version is ${VERSION}"
+
+          echo "📝 Updating CHANGELOG.md"
+          if [ -f "CHANGELOG.md" ]; then
+            sed -i "s/## Unreleased/## ${VERSION}/" CHANGELOG.md
+            echo "✅ CHANGELOG.md updated"
+          else
+            echo "⚠️  CHANGELOG.md not found"
+          fi
+
+      - name: Create version bump patch
+        if: |
+          (matrix.arch == 'amd64') &&
+          (startsWith(matrix.platform, 'ubuntu'))
+        run: git diff > new-version.patch
+
+      - name: Store version bump patch
+        if: |
+          (matrix.arch == 'amd64') &&
+          (startsWith(matrix.platform, 'ubuntu'))
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: new-version-patch-${{ inputs.package-manager }}
+          path: ./new-version.patch
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Install dependencies
+        working-directory: ./${{ inputs.working-directory }}
+        run: |
+          echo "📦 Installing dependencies with ${{ inputs.package-manager }}"
+          echo "Working directory: $(pwd)"
+          echo "Package manager: ${{ inputs.package-manager }}"
+          
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            echo "🔍 npm version: $(npm --version)"
+            echo "🔍 node version: $(node --version)"
+            echo "📋 package.json exists: $([ -f package.json ] && echo 'yes' || echo 'no')"
+            echo "📋 package-lock.json exists: $([ -f package-lock.json ] && echo 'yes' || echo 'no')"
+            npm ci
+            echo "✅ npm ci completed"
+          else
+            echo "🔍 yarn version: $(yarn --version)"
+            echo "🔍 node version: $(node --version)"
+            echo "📋 package.json exists: $([ -f package.json ] && echo 'yes' || echo 'no')"
+            echo "📋 yarn.lock exists: $([ -f yarn.lock ] && echo 'yes' || echo 'no')"
+            yarn --frozen-lockfile --prefer-offline --ignore-scripts
+            echo "✅ yarn install completed"
+          fi
+
+      - name: Remove badges
+        if: (matrix.arch == 'amd64') && (startsWith(matrix.platform, 'ubuntu'))
+        run: |
+          sed -i "/https:\/\/qlty\.sh\/gh/d" README.md
+          sed -i "/https:\/\/securityscorecards\.dev\/viewer/d" README.md
+
+      - name: Lint
+        working-directory: ./${{ inputs.working-directory }}
+        run: |
+          echo "🔍 Starting lint process"
+          echo "Working directory: $(pwd)"
+          echo "Lint command: ${{ inputs.package-manager }} run ${{ inputs.lint-command }}"
+          
+          echo "🚀 Executing lint command..."
+          ${{ inputs.package-manager }} run ${{ inputs.lint-command }}
+          echo "✅ Lint completed successfully"
+
+      # - name: Download tool dependencies (for universal VSIX)
+      #   if: ${{ inputs.download-script-name != '' }}
+      #   working-directory: .github/workflows
+      #   run: ./${{inputs.download-script-name}}
+
+      - name: Run build
+        id: build
+        working-directory: ./${{ inputs.working-directory }}
+        run: |
+          echo "🔨 Starting build process"
+          echo "Working directory: $(pwd)"
+          echo "Build command: ${{ inputs.package-manager }} run ${{ inputs.build-command }}"
+          echo "Package manager: ${{ inputs.package-manager }}"
+          
+          # Check if build script exists
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            echo "📋 Available npm scripts:"
+            npm run --silent 2>/dev/null || echo "No scripts found"
+          else
+            echo "📋 Available yarn scripts:"
+            yarn run --silent 2>/dev/null || echo "No scripts found"
+          fi
+          
+          echo "🚀 Executing build command..."
+          ${{ inputs.package-manager }} run ${{ inputs.build-command }}
+          echo "✅ Build completed successfully"
+
+      - name: Upload dist
+        # Used for release assets
+        if: (matrix.arch == 'amd64') && (startsWith(matrix.platform, 'ubuntu'))
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: dist-${{ inputs.package-manager }}
+          path: |
+            ./README.md
+            ./CHANGELOG.md
+            ./package.json
+            ./dist
+          retention-days: 1
+
+  test:
+    needs: [ configure-ci ]
+    name: 'Test (${{ matrix.platform }}, ${{ matrix.arch }})'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.configure-ci.outputs.platform-matrix) }}
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+      - run: git config --global core.autocrlf false
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          submodules: true
+          fetch-depth: 0  # Fetch full history for git describe to work
+
+      - name: Setup Node
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: ${{ inputs.node-version-file }}
+          registry-url: https://npm.pkg.github.com
+          package-manager-cache: false
+          always-auth: true
+
+      - name: Install dependencies
+        working-directory: ./${{ inputs.working-directory }}
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm ci
+          else
+            yarn --frozen-lockfile --prefer-offline --ignore-scripts
+          fi
+
+      - name: Run tests
+        working-directory: ./${{ inputs.working-directory }}
+        run: ${{ inputs.package-manager }} run ${{ inputs.test-command }}
+
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        if: (matrix.arch == 'amd64') && (startsWith(matrix.platform, 'ubuntu'))
+        with:
+          name: test-coverage-${{ inputs.package-manager }}
+          path: ./coverage
+
+      - name: End-to-end Test
+        if: needs.configure-ci.outputs.has-e2e-tests == 'true'
+        run: ${{ inputs.package-manager }} run test:e2e
+
+      - name: Upload screenshots as artifacts
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: e2e-test-screenshots-${{ matrix.os }}
+          path: ./e2e-screenshots/*.png
+          if-no-files-found: ignore
+
+  publish-coverage:
+    name: Publish Coverage
+    needs: test
+    if: inputs.enable-qlty == true
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Download coverage reports from artifacts
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: test-coverage-${{ inputs.package-manager }}
+          path: coverage
+
+      - name: Publish coverage report to Qlty
+        uses: qltysh/qlty-action/coverage@a19242102d17e497f437d7466aa01b528537e899 # v2.2.0
+        with:
+          token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
+          files: coverage/lcov.info
+          skip-errors: false
+
+  package:
+    name: Package
+    runs-on: [ubuntu-latest]
+    needs: build
+    strategy:
+      fail-fast: true
+      matrix:
+        target:
+          - win32-x64
+          - win32-arm64
+          - linux-x64
+          - linux-arm64
+          - darwin-arm64
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          submodules: true
+
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          node-version-file: package.json
+          registry-url: https://npm.pkg.github.com
+          always-auth: true
+          package-manager-cache: false
+
+      - name: Download dist
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: dist-${{ inputs.package-manager }}
+          path: .
+
+      - name: Install dependencies
+        working-directory: ./${{ inputs.working-directory }}
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm ci
+          else
+            yarn --frozen-lockfile --prefer-offline --ignore-scripts
+          fi
+      # - name: Download tools
+      #   working-directory: ./${{ inputs.working-directory }}
+      #   run: |
+      #     if [ "${{ inputs.package-manager }}" = "npm" ]; then
+      #       npm ci
+      #       npm run download-tools -- --target ${{ matrix.target }} --no-cache
+      #     else
+      #       yarn --frozen-lockfile --ignore-scripts --prefer-offline
+      #       yarn download-tools --target ${{ matrix.target }} --no-cache
+      #     fi
+
+      - name: Create package
+        working-directory: ./${{ inputs.working-directory }}
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm run build && npm run package -- --target ${{ matrix.target }} --no-yarn
+          else
+            yarn build && yarn package -- --target ${{ matrix.target }} --yarn
+          fi
+
+      - name: Upload package
+        if: success()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: vsix-package-${{ inputs.package-manager }}-${{ matrix.target }}
+          path: ./*.vsix
+          retention-days: 1
+
+  push-new-version:
+    name: Push New Version
+    runs-on: [ubuntu-latest]
+    if: github.event_name == 'release'
+    needs: [ build ]
+    permissions:
+      contents: write
+    outputs:
+      release_commit: ${{ steps.commit-version.outputs.release_commit }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Download version bump patch
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: new-version-patch-${{ inputs.package-manager }}
+          path: ~/patches
+
+      - name: Apply version bump patch
+        run: git apply ~/patches/new-version.patch
+
+      - name: Create Pull Request
+        id: cpr
+        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
+        with:
+          base: main
+          token: ${{ secrets.PR_TOKEN }}
+          commit-message: 'Version bump to ${{ github.event.release.tag_name }} [skip ci]'
+          title: ':rocket: Version Bump to release version ${{ github.event.release.tag_name }} [skip ci]'
+          body: |
+            Automated version bump PR created during release process.
+
+            - Updates package.json version to ${{ github.event.release.tag_name }}
+            - Updates CHANGELOG.md with release version
+
+            This PR should be merged to keep the main branch in sync with the release.
+
+            **Note:** CI is skipped for this automated PR to avoid unnecessary builds.
+          branch: release-version-bump-${{ github.event.release.tag_name }}
+          delete-branch: true
+          labels: automated-pr
+          draft: true
+
+      - name: Store release commit SHA
+        id: commit-version
+        run: |
+          echo "📝 Pull request created: ${{ steps.cpr.outputs.pull-request-url }}"
+          echo "🔗 Pull request number: ${{ steps.cpr.outputs.pull-request-number }}"
+          echo "📋 Head SHA: ${{ steps.cpr.outputs.pull-request-head-sha }}"
+          echo "release_commit=${{ steps.cpr.outputs.pull-request-head-sha }}" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Publish release
+    runs-on: [ubuntu-latest]
+    if: github.event_name == 'release'
+    needs: [ package, push-new-version ]
+    permissions:
+      contents: write  # for softprops/action-gh-release to create a GitHub release
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
+      - name: Download packages
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          pattern: vsix-package-*
+
+      - name: Download coverage report
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          pattern: test-coverage-${{ inputs.package-manager }}
+          path: test-coverage-${{ inputs.package-manager }}
+
+      - name: Zip test coverage
+        run: |
+          ls -l
+          zip -r test-coverage.zip *
+        working-directory: test-coverage-${{ inputs.package-manager }}
+
+      - name: Release
+        uses: softprops/action-gh-release@6da8fa9354ddfdc4aeace5fc48d7f679b5214090 # v2.4.1
+        with:
+          files: |
+            **/*.vsix
+            test-coverage-${{ inputs.package-manager }}/test-coverage.zip
+          target_commitish: ${{ needs.push-new-version.outputs.release_commit }}
