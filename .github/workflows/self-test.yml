@@ -1,0 +1,47 @@
+name: Self Test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/self-test.yml'
+      - '.github/workflows/build-and-verify.yml'
+      - '.github/platform-matrix.json'
+      - 'src/**'
+      - 'package.json'
+      - 'tsconfig.json'
+      - 'yarn.lock'
+  release:
+    types: [published]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  self-test-npm:
+    permissions:
+      contents: write  # Required for the publish job in the reusable workflow
+    uses: ./.github/workflows/build-and-verify.yml
+    secrets:
+      PR_TOKEN: ${{ secrets.PAT_TOKEN }} 
+    with:
+      platform-matrix-file: .github/platform-matrix.json
+      package-manager: npm
+
+  # self-test-yarn:
+  #   if: github.event_name != 'release'
+  #   permissions:
+  #     contents: write  # Required for the publish job in the reusable workflow
+  #   uses: ./.github/workflows/build-and-verify.yml
+  #   secrets:
+  #     PR_TOKEN: ${{ secrets.PAT_TOKEN }} 
+  #   with:
+  #     platform-matrix-file: .github/platform-matrix.json
+  #     package-manager: yarn
+
+  markdown-check:
+    uses: Open-CMSIS-Pack/workflows-and-actions-collection/.github/workflows/markdown-lint.yml@v1.0.1

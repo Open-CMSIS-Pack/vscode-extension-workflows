@@ -1,0 +1,51 @@
+{
+  "name": "ts-basic-app",
+  "displayName": "TypeScript Basic App",
+  "description": "A basic TypeScript application with testing and packaging support",
+  "version": "1.1.0",
+  "publisher": "your-publisher-name",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "engines": {
+    "node": "^20.18.0",
+    "yarn": "^1.22.0",
+    "vscode": "^1.63.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "typescript",
+    "demo",
+    "basic"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Open-CMSIS-Pack/vscode-extension-workflows.git"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {},
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "git clean -f -x ./node_modules ./dist ./coverage ./.vscode-test *.vsix",
+    "lint": "echo \"✅ Lint check completed!\"",
+    "test": "jest --coverage",
+    "test:e2e": "echo \"✅ E2E test completed!\"",
+    "package": "npm run build && vsce package --no-dependencies --allow-star-activation --allow-missing-repository --skip-license",
+    "tpip": "tsx scripts/tpip-reporter.ts --header ./scripts/tpip-header.md docs/third-party-licenses.json ./tpip.md",
+    "tpip:update": "tsx scripts/update-tpip docs/third-party-licenses.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "@types/node": "^20.11.30",
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.0",
+    "ts-jest": "^29.1.0",
+    "@vscode/vsce": "^3.1.0",
+    "yargs": "^18.0.0",
+    "@types/yargs": "^17.0.33"
+  }
+}
