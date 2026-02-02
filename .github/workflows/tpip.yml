@@ -61,6 +61,8 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ env.CALLER_DIR }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ "${{ inputs.package-manager }}" = "npm" ]; then
             npm ci
