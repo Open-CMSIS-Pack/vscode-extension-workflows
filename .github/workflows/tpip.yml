@@ -5,7 +5,7 @@ on:
     inputs:
       node-version-file:
         description: 'package.json file'
-        required: true
+        required: false
         type: string
         default: './package.json'
       package-manager:
