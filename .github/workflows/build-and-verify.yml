@@ -316,7 +316,7 @@ jobs:
         if: |
           (matrix.arch == 'amd64') &&
           (startsWith(matrix.platform, 'ubuntu'))
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: new-version-patch-${{ inputs.package-manager }}
           path: ./new-version.patch
@@ -393,7 +393,7 @@ jobs:
       - name: Upload dist
         # Used for release assets
         if: (matrix.arch == 'amd64') && (startsWith(matrix.platform, 'ubuntu'))
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: dist-${{ inputs.package-manager }}
           path: |
@@ -444,7 +444,7 @@ jobs:
         working-directory: ./${{ inputs.working-directory }}
         run: ${{ inputs.package-manager }} run ${{ inputs.test-command }}
 
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: (matrix.arch == 'amd64') && (startsWith(matrix.platform, 'ubuntu'))
         with:
           name: test-coverage-${{ inputs.package-manager }}
@@ -456,7 +456,7 @@ jobs:
 
       - name: Upload screenshots as artifacts
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: e2e-test-screenshots-${{ matrix.os }}
           path: ./e2e-screenshots/*.png
@@ -556,7 +556,7 @@ jobs:
 
       - name: Upload package
         if: success()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: vsix-package-${{ inputs.package-manager }}-${{ matrix.target }}
           path: ./*.vsix
