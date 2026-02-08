@@ -191,7 +191,7 @@ jobs:
           fetch-depth: 0  # Fetch full history for git describe to work
 
       - name: Setup Node
-        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version-file: ${{ inputs.node-version-file }}
           registry-url: https://npm.pkg.github.com
@@ -424,7 +424,7 @@ jobs:
           fetch-depth: 0  # Fetch full history for git describe to work
 
       - name: Setup Node
-        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version-file: ${{ inputs.node-version-file }}
           registry-url: https://npm.pkg.github.com
@@ -511,7 +511,7 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
