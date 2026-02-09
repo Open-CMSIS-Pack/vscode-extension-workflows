@@ -194,7 +194,7 @@ jobs:
           fetch-depth: 0  # Fetch full history for git describe to work
 
       - name: Setup Node
-        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version-file: ${{ inputs.node-version-file }}
           registry-url: https://npm.pkg.github.com
@@ -318,7 +318,7 @@ jobs:
         if: |
           (matrix.arch == 'amd64') &&
           (startsWith(matrix.platform, 'ubuntu'))
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: new-version-patch-${{ inputs.package-manager }}
           path: ./new-version.patch
@@ -398,7 +398,7 @@ jobs:
       - name: Upload dist
         # Used for release assets
         if: (matrix.arch == 'amd64') && (startsWith(matrix.platform, 'ubuntu'))
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: dist-${{ inputs.package-manager }}
           path: |
@@ -429,7 +429,7 @@ jobs:
           fetch-depth: 0  # Fetch full history for git describe to work
 
       - name: Setup Node
-        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version-file: ${{ inputs.node-version-file }}
           registry-url: https://npm.pkg.github.com
@@ -451,7 +451,7 @@ jobs:
         working-directory: ./${{ inputs.working-directory }}
         run: ${{ inputs.package-manager }} run ${{ inputs.test-command }}
 
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: (matrix.arch == 'amd64') && (startsWith(matrix.platform, 'ubuntu'))
         with:
           name: test-coverage-${{ inputs.package-manager }}
@@ -463,7 +463,7 @@ jobs:
 
       - name: Upload screenshots as artifacts
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: e2e-test-screenshots-${{ matrix.os }}
           path: ./e2e-screenshots/*.png
@@ -483,7 +483,7 @@ jobs:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
 
       - name: Download coverage reports from artifacts
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: test-coverage-${{ inputs.package-manager }}
           path: coverage
@@ -518,14 +518,16 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           node-version-file: package.json
           registry-url: https://npm.pkg.github.com
           package-manager-cache: false
 
       - name: Download dist
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: dist-${{ inputs.package-manager }}
           path: .
@@ -563,7 +565,7 @@ jobs:
 
       - name: Upload package
         if: success()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: vsix-package-${{ inputs.package-manager }}-${{ matrix.target }}
           path: ./*.vsix
@@ -591,7 +593,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download version bump patch
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: new-version-patch-${{ inputs.package-manager }}
           path: ~/patches
@@ -601,7 +603,7 @@ jobs:
 
       - name: Create Pull Request
         id: cpr
-        uses: peter-evans/create-pull-request@84ae59a2cdc2258d6fa0732dd66352dddae2a412 # v7.0.9
+        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
         with:
           base: main
           token: ${{ secrets.PR_TOKEN }}
@@ -643,12 +645,12 @@ jobs:
           egress-policy: audit
 
       - name: Download packages
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: vsix-package-*
 
       - name: Download coverage report
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: test-coverage-${{ inputs.package-manager }}
           path: test-coverage-${{ inputs.package-manager }}
