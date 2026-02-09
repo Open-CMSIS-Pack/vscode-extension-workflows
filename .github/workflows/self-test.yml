@@ -27,7 +27,8 @@ jobs:
       contents: write  # Required for the publish job in the reusable workflow
     uses: ./.github/workflows/build-and-verify.yml
     secrets:
-      PR_TOKEN: ${{ secrets.PAT_TOKEN }} 
+      PR_TOKEN: ${{ secrets.PAT_TOKEN }}
+      GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
     with:
       platform-matrix-file: .github/platform-matrix.json
       package-manager: npm
