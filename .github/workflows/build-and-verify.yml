@@ -476,7 +476,7 @@ jobs:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
 
       - name: Download coverage reports from artifacts
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: test-coverage-${{ inputs.package-manager }}
           path: coverage
@@ -521,7 +521,7 @@ jobs:
           package-manager-cache: false
 
       - name: Download dist
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: dist-${{ inputs.package-manager }}
           path: .
@@ -584,7 +584,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download version bump patch
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: new-version-patch-${{ inputs.package-manager }}
           path: ~/patches
@@ -636,12 +636,12 @@ jobs:
           egress-policy: audit
 
       - name: Download packages
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: vsix-package-*
 
       - name: Download coverage report
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: test-coverage-${{ inputs.package-manager }}
           path: test-coverage-${{ inputs.package-manager }}
